@@ -11,4 +11,4 @@ COPY jenkins-demo-app.jar /app/
 EXPOSE 8088
 
 # 启动命令，可添加 JVM 参数
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/jenkins-dome-app.jar"]
