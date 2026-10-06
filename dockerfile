@@ -11,4 +11,4 @@ COPY jenkins-demo-app/target/wu-1.0-SNAPSHOT.jar /app/
 EXPOSE 8088
 
 # 启动命令，可添加 JVM 参数
-ENTRYPOINT ["java", "-jar", "/app/jenkins-dome-app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/wu-1.0-SNAPSHOT.jar"]
