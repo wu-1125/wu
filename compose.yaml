@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  my-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jenkins-dome:v1.0.0
+    container_name: my-app
+    ports:
+      - "8088:8088"
