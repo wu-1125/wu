@@ -13,4 +13,4 @@ spec:
     # 默认 IfNotPresent，如果要用同一标签覆盖推送到 Harbor，建议改为 Always
     imagePullPolicy: IfNotPresent
     ports:
-    - containerPort: 10000
+    - containerPort: 8080
