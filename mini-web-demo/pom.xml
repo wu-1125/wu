@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example</groupId>
+  <artifactId>mini-web-demo</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>mini-web-demo</name>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- 目标字节码版本：CI 机器上 JDK 8 / 11 / 17 都能编译；想统一用 17 就改成 17 -->
+    <maven.compiler.release>11</maven.compiler.release>
+  </properties>
+
+  <!-- 零第三方依赖：只用 JDK 自带的 HttpServer，构建快、产物小 -->
+
+  <build>
+    <finalName>mini-web-demo</finalName>
+    <plugins>
+      <!-- 打成可直接 java -jar 运行的 jar，并在 MANIFEST 里写入 Main-Class -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>com.example.demo.App</mainClass>
+            </manifest>
+            <manifestEntries>
+              <Implementation-Version>${project.version}</Implementation-Version>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
