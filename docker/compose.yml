@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mini-web-demo-pod
+  labels:
+    app: mini-web-demo
+spec:
+  nodeName: k8s-master-node1
+  containers:
+  - name: mini-web-demo
+    # 替换为你真实的 Harbor 镜像地址（注意如果你用了非 443/80 端口，一定要带上端口号）
+    image: 192.168.100.80:7000/test/test:1.0
+    # 默认 IfNotPresent，如果要用同一标签覆盖推送到 Harbor，建议改为 Always
+    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 10000
