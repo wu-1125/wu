@@ -37,7 +37,7 @@ pipeline {
              sh '''
                   set -e
                   echo "$REG_PASS" | docker login 192.168.100.80:7000 -u "$REG_USER" --password-stdin
-                  docker build -t 192.168.100.80:7000/test/wbs:1.0  -f mini-web-demo/dockerfile .
+                  docker build -t 192.168.100.80:7000/test/wbs:1.0  -f mini-web-demo/docker/dockerfile .
                    docker push 192.168.100.80:7000/test/wbs:1.0 
                '''
        }            
@@ -47,7 +47,10 @@ pipeline {
         stage('k8s_deployapp') {
             steps {
                  withKubeConfig(credentialsId: 'k8s'){
-                     sh 'kubectl apply -f mini-web-demo/deployapp.yaml -n staging'
+                     sh 'kubectl apply -f mini-web-demo/k8s/deployapp.yaml -n staging'
+                     sh 'kubectl apply -f mini-web-demo/k8s/service.yaml -n staging'
+                     sh 'kubectl apply -f mini-web-demo/k8s/ingress.yaml -n staging'
+ 
                  }
             }
         }

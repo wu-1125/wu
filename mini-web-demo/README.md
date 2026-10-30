@@ -1,143 +1,135 @@
 # mini-web-demo
 
-一个**极小的 Java 网页服务**，专门用来做 CI/CD 流水线测试：构建 → 启动 → 访问网页 → 看到成功结果。
+Spring Boot 示例项目。业务代码不多，主要用来验证一条从代码提交到 Kubernetes 上线的 CI/CD 流程。
 
-- 只依赖 JDK 自带的 `HttpServer`，**零第三方依赖**，不用 Spring
-- 全部代码只有 **1 个 Java 文件**，jar 包约 6 KB
-- 构建只需要执行 `mvn clean package`
-
----
-
-## 一、要改的内容在哪个文件？
-
-**只有这一个文件：**
-
-```
-src/main/java/com/example/demo/App.java
-```
-
-打开它，最上面就有这三行常量（在大约第 22~25 行）：
-
-```java
-// ==================== 改这里就能改网页内容 ====================
-static final String APP_NAME = "mini-web-demo";
-static final String VERSION  = "v1.0.0";
-static final String MESSAGE  = "Hello CI/CD! 这是 Java 代码里写好的内容。";
-// =============================================================
-```
-
-| 常量 | 作用 |
-| --- | --- |
-| `MESSAGE` | **网页上那个大字显示的内容**（就是你要改的东西） |
-| `VERSION` | 版本号，网页上显示，也有单独的 `/version` 接口 |
-| `APP_NAME` | 网页标题和表格里的应用名 |
-
-> 改完之后重新打包、重新部署，网页上的内容就会变 —— 这就是你要的“版本控制效果”。
->
-> 想验证得明显一点，建议每次改动同时把 `VERSION` 加一（`v1.0.1`、`v1.0.2`……），
-> 这样在流水线里一眼就能看出这次部署的是哪一版。
-
-### 想改成从配置文件读内容？（可选）
-如果你希望不重新编译就能改内容，可以把 `MESSAGE` 改成从环境变量读，例如：
-
-```java
-static final String MESSAGE =
-        System.getenv().getOrDefault("APP_MESSAGE", "Hello CI/CD! 这是默认内容。");
-```
-
----
-
-## 二、项目结构
+## 目录结构
 
 ```
 mini-web-demo/
-├── pom.xml                                  # Maven 打包文件
-├── .gitignore
-├── README.md
-└── src/main/java/com/example/demo/App.java  # ★ 全部代码都在这里（要改的内容也在这里）
+├── src/                   # Spring Boot 代码，/ 和 /health 两个接口
+├── docker/
+│   ├── Dockerfile         # 多阶段构建
+│   └── docker-compose.yml # 本地起一套用
+├── k8s/
+│   ├── deployment.yaml
+│   └── service.yaml
+├── Jenkinsfile            # 流水线定义
+├── pom.xml
+└── README.md
 ```
 
----
+## 流水线
 
-## 三、构建 & 运行
+在 Jenkins 上触发构建，可以选分支 / Tag 和环境。
 
-### 1. 打包
-```bash
-mvn clean package
-```
-产物：`target/mini-web-demo.jar`
+| 步骤        | 做的事                                       |
+| ----------- | -------------------------------------------- |
+| 1. 拉取代码 | 按参数指定的分支或 Tag                       |
+| 2. 构建     | `mvn clean verify`，跑单测并生成 jacoco 报告 |
+| 3. 扫描     | SonarQube 静态扫描                           |
+| 4. 质量门禁 | `waitForQualityGate`，不通过直接终止         |
+| 5. 构建镜像 | 多阶段构建，tag 用 `构建号-commit`           |
+| 6. 推送     | 推到 Harbor                                  |
+| 7. 部署     | `kubectl set image`，滚动更新                |
+| 8. 健康检查 | 集群内请求 `/health`，失败则 `rollout undo`  |
 
-### 2. 启动
-```bash
-java -jar target/mini-web-demo.jar
-```
-默认端口 **8080**，可以改：
-```bash
-java -jar target/mini-web-demo.jar          # 8080
-PORT=9090 java -jar target/mini-web-demo.jar # Windows PowerShell: $env:PORT='9090'; java -jar ...
-```
+## 几点说明
 
-### 3. 访问
-| 地址 | 返回 |
-| --- | --- |
-| http://localhost:8080/ | 网页（显示 `MESSAGE` 的内容） |
-| http://localhost:8080/health | `OK`，给流水线做健康检查 |
-| http://localhost:8080/version | `v1.0.0`，当前版本号 |
+**镜像 tag**
 
-启动时控制台会打印（CI 日志里能直接看到）：
-```
-==================================================
-应用名称 : mini-web-demo
-版本号   : v1.0.0
-输出内容 : Hello CI/CD! 这是 Java 代码里写好的内容。
-启动时间 : 2026-10-20 08:42:00
-Java 版本: 17.0.12
-==================================================
-网页地址 : http://localhost:8080/
-```
+用的是 `${BUILD_NUMBER}-${GIT_COMMIT:0:7}`，比如 `42-a1b2c3d`。
 
----
+不用 latest 是因为它每次覆盖，出了事想回滚，根本找不到上一版镜像是哪个。
 
-## 四、在流水线里怎么串起来
+**部署方式**
 
-```bash
-mvn clean package                       # 1. 构建
-java -jar target/mini-web-demo.jar &    # 2. 后台启动
-sleep 3                                 # 3. 等它起来
+第一版是 ssh 登录 master 执行 kubectl，能跑通，但有几个问题：master 成了单点、用的 kubeconfig 是集群 admin、权限太大、也不走 API Server 审计。
 
-curl -f http://localhost:8080/health    # 4. 健康检查，失败就让流水线红
-curl -s http://localhost:8080/          # 5. 抓网页内容打印到流水线日志里
+后来给流水线单独建了个 ServiceAccount，权限用 Role 限制在 demo 命名空间，Jenkins 拿 kubeconfig 直连 apiserver，不用登录任何机器。
 
-# 6. 校验内容对不对（内容被改坏时流水线直接报错）
-curl -s http://localhost:8080/version | grep -q "v1.0.0" || exit 1
-```
+Role 里故意没给 `delete deployments`、`secrets`、`nodes`。这几个操作都试过，返回 Forbidden。
 
-### 如果用 Docker（可选，需要时再加）
-```dockerfile
-FROM eclipse-temurin:17-jre
-COPY target/mini-web-demo.jar app.jar
-ENTRYPOINT ["java","-jar","/app.jar"]
-```
+**质量门禁**
 
----
+扫描不通过时，后面的构建镜像和部署都不会执行。这是特意验证过的：提交一段带硬编码密码的代码，流水线在门禁那一步就停了。
 
-## 五、附：本机没装 Maven 时怎么跑
+**健康检查**
 
-只要有 **JDK 8 及以上**（`javac`、`jar` 命令）就能手工构建：
+没有只看 `rollout status`。它只能说明 Pod Ready，不代表接口真的能用。所以是起一个临时 curl Pod，从集群内部请求 `/health`，看是不是返回 200。
+
+**镜像体积**
+
+单阶段构建时大约 1.2G，改成多阶段 + JRE 基础镜像 + `.dockerignore` 后降到 380M 左右。
+
+另外把 `COPY pom.xml` 和 `mvn dependency:go-offline` 放在 `COPY src` 前面，pom 没变就能命中缓存，构建时间从 6 分钟降到 90 秒左右。
+
+## 本地运行
 
 ```bash
-javac -encoding UTF-8 -d target/classes src/main/java/com/example/demo/App.java
-jar --create --file target/mini-web-demo.jar --main-class com.example.demo.App -C target/classes .
-java -jar target/mini-web-demo.jar
+mvn clean verify
+mvn spring-boot:run
+curl http://127.0.0.1:8080/health
 ```
 
----
+用 Docker：
 
-## 六、说明
+```bash
+# Dockerfile 在 docker/ 下，但构建上下文要用仓库根目录
+docker build -f docker/Dockerfile -t mini-web-demo:local .
+docker run -d -p 8080:8080 -e TZ=Asia/Shanghai mini-web-demo:local
+```
 
-- 编译目标为 Java 11 字节码，所以流水线机器上是 **JDK 8 / 11 / 17 / 21 都能编译**；
-  只想用 17 就把 `pom.xml` 里的 `maven.compiler.release` 改成 `17`。
-- 服务用的是 JDK 自带的 `HttpServer`，单线程、无连接池，**只适合做流水线和冒烟测试**，不要拿去做生产。
-- 中文日志在 Linux/容器（UTF-8 环境）下正常；如果某个流水线日志显示乱码，
-  启动时加上 `-Dstdout.encoding=UTF-8` 即可。
-- 发布一版就改一次 `MESSAGE` + `VERSION`，然后 `git commit`，流水线跑完后对比网页内容就能看到版本变化。
+## 部署到 K8s
+
+```bash
+kubectl create namespace demo
+
+kubectl create secret docker-registry harbor-secret \
+  --docker-server=harbor.local \
+  --docker-username=jenkins \
+  --docker-password='<Harbor密码>' \
+  -n demo
+
+kubectl apply -f k8s/deployment.yaml -n demo
+kubectl apply -f k8s/service.yaml -n demo
+
+kubectl get pod -n demo -w
+```
+
+`deployment.yaml` 里的镜像地址写的是占位符。第一次部署用 sed 替换后 apply，之后发版统一用 `kubectl set image`，避免 apply 把镜像改回去。
+
+## Jenkins 配置
+
+需要装的插件：SonarQube Scanner、Sonar Quality Gates、Docker Pipeline、Git Parameter、Credentials Binding。
+
+需要的凭据：
+
+| ID               | 类型        | 内容                             |
+| ---------------- | ----------- | -------------------------------- |
+| `harbor-cred`    | 用户名密码  | Harbor 推送账号                  |
+| `k8s-kubeconfig` | Secret file | ServiceAccount 生成的 kubeconfig |
+| `sonar-token`    | Secret text | SonarQube 的 User Token          |
+
+都通过 `withCredentials` 注入，不写在脚本里。
+
+## 踩过的坑
+
+| 现象                                                | 原因                                                        | 解决                                          |
+| --------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| 容器日志时间差 8 小时                               | 容器默认 UTC                                                | Dockerfile 里设 `TZ`，挂 `/etc/localtime`     |
+| `COPY failed: file not found`                       | Dockerfile 在 docker/，构建上下文写成了 docker/             | `docker build -f docker/Dockerfile .`         |
+| Jenkins 找不到流水线                                | 文件名写成了 `jenkinsfile`                                  | 改成 `Jenkinsfile`                            |
+| 每次构建都要重下依赖                                | `COPY . .` 在 `RUN mvn` 之前                                | 先 COPY pom.xml 并 `dependency:go-offline`    |
+| push 报 `server gave HTTP response to HTTPS client` | Harbor 是 HTTP                                              | 配 `insecure-registries` 后重启 docker        |
+| Pod 一直 ImagePullBackOff                           | 镜像名错 / 没配 imagePullSecrets / 节点解析不了 harbor 域名 | 三个都查                                      |
+| 覆盖率一直是 0%                                     | 用了 `mvn package`，没跑测试；或没配 jacoco                 | 改用 `mvn verify`，加 jacoco 插件             |
+| `waitForQualityGate` 等到超时                       | SonarQube 没配 webhook                                      | 加 `http://<jenkins>:8080/sonarqube-webhook/` |
+| 改了 YAML 发版没生效                                | image 写死，apply 又改回去                                  | 首次 apply，之后用 `set image`                |
+| 回滚报 Forbidden                                    | Role 里没有 `patch deployments`                             | 补权限                                        |
+| Pod OOMKilled                                       | JVM 没感知容器内存限制                                      | 加 `-XX:MaxRAMPercentage=75.0`                |
+
+## 备注
+
+凭据都放在 Jenkins Credentials 里，仓库里没有任何密码。
+
+后续想做的是把裸 YAML 换成 Helm，这样回滚可以用 `helm rollback --atomic`。
