@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('git') {
+            steps {
+                git 'git@github.com:wu-1125/wu.git'
+            }
+        }
+
+        stage('maven') {
+            steps {
+                 dir('mini-web-demo'){
+                sh '/var/jenkins_home/tools/hudson.tasks.Maven_MavenInstallation/maver3.9.11/bin/mvn clean package -DskipTests'
+            }
+           }
+        }
+
+         stage('sonarqube') {
+           steps {
+             script {
+               def scannerHome = tool 'sonarqube'  // 同样对应全局工具里的 Scanner 名称
+               withSonarQubeEnv('sonarqube') {
+               sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=com.example:wbs -Dsonar.sources=."
+              }
+            }
+          }
+       }
+
+        stage('dockerbulid&push') {
+          steps {
+            withCredentials([usernamePassword(
+              credentialsId: 'harbor',     
+              usernameVariable: 'REG_USER',       
+              passwordVariable: 'REG_PASS'         
+         )]) {
+             sh '''
+                  set -e
+                  echo "$REG_PASS" | docker login 192.168.100.80:7000 -u "$REG_USER" --password-stdin
+                  docker build -t 192.168.100.80:7000/test/wbs:1.0  -f mini-web-demo/dockerfile .
+                   docker push 192.168.100.80:7000/test/wbs:1.0 
+               '''
+       }            
+         }
+           }
+
+        stage('k8s_deployapp') {
+            steps {
+                 withKubeConfig(credentialsId: 'k8s'){
+                     sh 'kubectl apply -f mini-web-demo/deployapp.yaml -n staging'
+                 }
+            }
+        }
+    }
+}
