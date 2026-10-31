@@ -1,5 +1,6 @@
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY mini-web-demo/target/*.jar app.jar
+ENV TZ=Asia/Shanghai
 EXPOSE 8080
-ENTRYPOINT ["java", "-Xms256m", "-Xmx512m", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
