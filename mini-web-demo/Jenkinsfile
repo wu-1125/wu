@@ -30,7 +30,7 @@ pipeline {
            steps {
              timeout(time: 5, unit: 'MINUTES') {
                waitForQualityGate abortPipeline: true
-           }
+          }
       }
   }  
         stage('dockerbulid&push') {
@@ -42,8 +42,8 @@ pipeline {
          )]) {
              sh '''
                   set -e
-                  echo "$REG_PASS" | docker login 192.168.100.80:7000 -u "$REG_USER" --password-stdin
-                  docker build -t 192.168.100.80:7000/test/wbs:1.0  -f mini-web-demo/docker/dockerfile .
+              echo "$REG_PASS" | docker login 192.168.100.80:7000 -u "$REG_USER" --password-stdin
+           docker build -t 192.168.100.80:7000/test/wbs:1.0  -f mini-web-demo/docker/dockerfile .
                    docker push 192.168.100.80:7000/test/wbs:1.0 
                '''
        }            
@@ -56,9 +56,8 @@ pipeline {
                      sh 'kubectl apply -f mini-web-demo/k8s/deployapp.yaml -n staging'
                      sh 'kubectl apply -f mini-web-demo/k8s/service.yaml -n staging'
                      sh 'kubectl apply -f mini-web-demo/k8s/ingress.yaml -n staging'
- 
+                   sh 'kubectl rollout status deployment/mini-web-demo -n staging --timeout=180s'
                  }
             }
         }
-    }
-}
+    
